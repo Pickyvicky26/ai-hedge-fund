@@ -257,15 +257,15 @@ class ApiKeyUpdateRequest(BaseModel):
 
 
 class ApiKeyResponse(BaseModel):
-    """Complete API key response"""
+    """API key response without the actual secret value"""
     id: int
     provider: str
-    key_value: str
     is_active: bool
     description: Optional[str]
     created_at: datetime
     updated_at: Optional[datetime]
     last_used: Optional[datetime]
+    has_key: bool = True
 
     class Config:
         from_attributes = True

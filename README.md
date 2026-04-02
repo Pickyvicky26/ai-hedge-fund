@@ -136,6 +136,11 @@ The new way to run the AI Hedge Fund is through our web application that provide
 
 Please see detailed instructions on how to install and run the web application [here](https://github.com/virattt/ai-hedge-fund/tree/main/app).
 
+Security note:
+
+- Sensitive backend routes are now limited to trusted local requests by default.
+- For remote access, set `AI_HEDGE_FUND_ADMIN_TOKEN` on the backend and send the same value from the frontend as `VITE_API_ADMIN_TOKEN`.
+
 <img width="1721" alt="Screenshot 2025-06-28 at 6 41 03 PM" src="https://github.com/user-attachments/assets/b95ab696-c9f4-416c-9ad1-51feb1f5374b" />
 
 
