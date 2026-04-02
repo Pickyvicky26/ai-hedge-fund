@@ -16,6 +16,19 @@ from app.backend.models.schemas import (
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 
 
+def _to_api_key_response(api_key) -> ApiKeyResponse:
+    return ApiKeyResponse(
+        id=api_key.id,
+        provider=api_key.provider,
+        is_active=api_key.is_active,
+        description=api_key.description,
+        created_at=api_key.created_at,
+        updated_at=api_key.updated_at,
+        last_used=api_key.last_used,
+        has_key=bool(api_key.key_value),
+    )
+
+
 @router.post(
     "/",
     response_model=ApiKeyResponse,
@@ -34,7 +47,7 @@ async def create_or_update_api_key(request: ApiKeyCreateRequest, db: Session = D
             description=request.description,
             is_active=request.is_active
         )
-        return ApiKeyResponse.from_orm(api_key)
+        return _to_api_key_response(api_key)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create/update API key: {str(e)}")
 
@@ -71,7 +84,7 @@ async def get_api_key(provider: str, db: Session = Depends(get_db)):
         api_key = repo.get_api_key_by_provider(provider)
         if not api_key:
             raise HTTPException(status_code=404, detail="API key not found")
-        return ApiKeyResponse.from_orm(api_key)
+        return _to_api_key_response(api_key)
     except HTTPException:
         raise
     except Exception as e:
@@ -98,7 +111,7 @@ async def update_api_key(provider: str, request: ApiKeyUpdateRequest, db: Sessio
         )
         if not api_key:
             raise HTTPException(status_code=404, detail="API key not found")
-        return ApiKeyResponse.from_orm(api_key)
+        return _to_api_key_response(api_key)
     except HTTPException:
         raise
     except Exception as e:
@@ -139,12 +152,9 @@ async def deactivate_api_key(provider: str, db: Session = Depends(get_db)):
     """Deactivate an API key without deleting it"""
     try:
         repo = ApiKeyRepository(db)
-        success = repo.deactivate_api_key(provider)
-        if not success:
+        api_key = repo.deactivate_api_key(provider)
+        if not api_key:
             raise HTTPException(status_code=404, detail="API key not found")
-        
-        # Return the updated key
-        api_key = repo.get_api_key_by_provider(provider)
         return ApiKeySummaryResponse.from_orm(api_key)
     except HTTPException:
         raise
@@ -174,7 +184,7 @@ async def bulk_update_api_keys(request: ApiKeyBulkUpdateRequest, db: Session = D
             for key in request.api_keys
         ]
         api_keys = repo.bulk_create_or_update(api_keys_data)
-        return [ApiKeyResponse.from_orm(key) for key in api_keys]
+        return [_to_api_key_response(key) for key in api_keys]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to bulk update API keys: {str(e)}")
 
@@ -198,4 +208,4 @@ async def update_last_used(provider: str, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update last used timestamp: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to update last used timestamp: {str(e)}")

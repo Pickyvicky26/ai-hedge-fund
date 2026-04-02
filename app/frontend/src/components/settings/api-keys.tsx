@@ -77,6 +77,7 @@ const LLM_API_KEYS: ApiKey[] = [
 
 export function ApiKeysSettings() {
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [configuredKeys, setConfiguredKeys] = useState<Record<string, boolean>>({});
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,19 +92,9 @@ export function ApiKeysSettings() {
       setLoading(true);
       setError(null);
       const apiKeysSummary = await apiKeysService.getAllApiKeys();
-      
-      // Load actual key values for existing keys
-      const keysData: Record<string, string> = {};
-      for (const summary of apiKeysSummary) {
-        try {
-          const fullKey = await apiKeysService.getApiKey(summary.provider);
-          keysData[summary.provider] = fullKey.key_value;
-        } catch (err) {
-          console.warn(`Failed to load key for ${summary.provider}:`, err);
-        }
-      }
-      
-      setApiKeys(keysData);
+      setConfiguredKeys(
+        Object.fromEntries(apiKeysSummary.map((summary) => [summary.provider, summary.has_key])),
+      );
     } catch (err) {
       console.error('Failed to load API keys:', err);
       setError('Failed to load API keys. Please try again.');
@@ -112,30 +103,33 @@ export function ApiKeysSettings() {
     }
   };
 
-  const handleKeyChange = async (key: string, value: string) => {
-    // Update local state immediately for responsive UI
+  const handleKeyChange = (key: string, value: string) => {
     setApiKeys(prev => ({
       ...prev,
       [key]: value
     }));
+  };
 
-    // Auto-save with debouncing
+  const saveKey = async (key: string) => {
+    const value = apiKeys[key]?.trim();
+    if (!value) {
+      return;
+    }
+
     try {
-      if (value.trim()) {
-        await apiKeysService.createOrUpdateApiKey({
-          provider: key,
-          key_value: value.trim(),
-          is_active: true
-        });
-      } else {
-        // If value is empty, delete the key
-        try {
-          await apiKeysService.deleteApiKey(key);
-        } catch (err) {
-          // Key might not exist, which is fine
-          console.log(`Key ${key} not found for deletion, which is expected`);
-        }
-      }
+      await apiKeysService.createOrUpdateApiKey({
+        provider: key,
+        key_value: value,
+        is_active: true
+      });
+      setConfiguredKeys(prev => ({
+        ...prev,
+        [key]: true
+      }));
+      setApiKeys(prev => ({
+        ...prev,
+        [key]: ''
+      }));
     } catch (err) {
       console.error(`Failed to save API key ${key}:`, err);
       setError(`Failed to save ${key}. Please try again.`);
@@ -157,6 +151,10 @@ export function ApiKeysSettings() {
         delete newKeys[key];
         return newKeys;
       });
+      setConfiguredKeys(prev => ({
+        ...prev,
+        [key]: false
+      }));
     } catch (err) {
       console.error(`Failed to delete API key ${key}:`, err);
       setError(`Failed to delete ${key}. Please try again.`);
@@ -175,45 +173,64 @@ export function ApiKeysSettings() {
       <CardContent className="space-y-4">
         {keys.map((apiKey) => (
           <div key={apiKey.key} className="space-y-2">
-                         <button
-               className="text-sm font-medium text-primary hover:text-blue-500 cursor-pointer transition-colors text-left"
-               onClick={() => window.open(apiKey.url, '_blank')}
-             >
-               {apiKey.label}
-             </button>
-            <div className="relative">
-              <Input
-                type={visibleKeys[apiKey.key] ? 'text' : 'password'}
-                placeholder={apiKey.placeholder}
-                value={apiKeys[apiKey.key] || ''}
-                onChange={(e) => handleKeyChange(apiKey.key, e.target.value)}
-                className="pr-20"
-              />
-              <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {apiKeys[apiKey.key] && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500"
-                    onClick={() => clearKey(apiKey.key)}
+            {(() => {
+              const hasTypedValue = Boolean(apiKeys[apiKey.key]);
+              const hasStoredKey = Boolean(configuredKeys[apiKey.key]);
+
+              return (
+                <>
+                  <button
+                    className="text-sm font-medium text-primary hover:text-blue-500 cursor-pointer transition-colors text-left"
+                    onClick={() => window.open(apiKey.url, '_blank')}
                   >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => toggleKeyVisibility(apiKey.key)}
-                >
-                  {visibleKeys[apiKey.key] ? (
-                    <EyeOff className="h-3 w-3" />
-                  ) : (
-                    <Eye className="h-3 w-3" />
+                    {apiKey.label}
+                  </button>
+                  <div className="relative">
+                    <Input
+                      type={visibleKeys[apiKey.key] ? 'text' : 'password'}
+                      placeholder={hasStoredKey ? 'Stored on backend. Enter a new key to replace it.' : apiKey.placeholder}
+                      value={apiKeys[apiKey.key] || ''}
+                      onChange={(e) => handleKeyChange(apiKey.key, e.target.value)}
+                      onBlur={() => saveKey(apiKey.key)}
+                      className="pr-20"
+                    />
+                    <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {(hasStoredKey || hasTypedValue) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => clearKey(apiKey.key)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                      {hasTypedValue && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => toggleKeyVisibility(apiKey.key)}
+                        >
+                          {visibleKeys[apiKey.key] ? (
+                            <EyeOff className="h-3 w-3" />
+                          ) : (
+                            <Eye className="h-3 w-3" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {hasStoredKey && !hasTypedValue && (
+                    <p className="text-xs text-muted-foreground">
+                      A key is already stored. Enter a new value and leave the field to replace it.
+                    </p>
                   )}
-                </Button>
-              </div>
-            </div>
+                </>
+              );
+            })()}
           </div>
         ))}
       </CardContent>
@@ -246,7 +263,7 @@ export function ApiKeysSettings() {
         <h2 className="text-xl font-semibold text-primary mb-2">API Keys</h2>
         <p className="text-sm text-muted-foreground">
           Configure API endpoints and authentication credentials for financial data and language models.
-          Changes are automatically saved.
+          New values save when you leave the field, and the trash action removes the stored key.
         </p>
       </div>
 
@@ -309,4 +326,4 @@ export function ApiKeysSettings() {
       </Card>
     </div>
   );
-} 
+}
